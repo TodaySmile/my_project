@@ -1,0 +1,77 @@
+#!/bin/bash
+# ============================================================================
+# @Project: KISA-2026 Vulnerability Assessment Scripts
+# @Copyright: Copyright (c) 2026 SHIN HyeokSeon (신혁선). All rights reserved.
+# @Version: 1.0.1
+# @Last Updated: 2026-01-28
+# ============================================================================
+# [점검 항목 상세]
+# @ID          : U-51
+# @Category    : UNIX > 3. 서비스 관리
+# @Platform    : SOLARIS, LINUX, AIX, HP-UX 등
+# @Severity    : (상)
+# @Title       : DNS 서비스의 취약한 동적 업데이트 설정 금지
+# @Description : 인가되지 않은 사용자의 DNS 동적 업데이트(Dynamic Update) 허용 여부 점검
+# @Reference   : 2026 KISA 주요정보통신기반시설 기술적 취약점 분석·평가 상세 가이드
+# ==============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/../../lib"
+
+source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/result_manager.sh"
+source "${LIB_DIR}/output_mode.sh"
+source "${LIB_DIR}/metadata_parser.sh"
+
+ITEM_ID="U-51"
+ITEM_NAME="DNS 서비스의 취약한 동적 업데이트 설정 금지"
+SEVERITY="(상)"
+
+GUIDELINE_PURPOSE="DNS 서비스의 동적 업데이트를 비활성화함으로써 신뢰할 수 없는 원본으로부터 업데이트를 받아들이는 위험을 차단하기 위함"
+GUIDELINE_THREAT="DNS 서버에서 동적 업데이트를 사용할 경우, 악의적인 사용자에 의해 신뢰할 수 없는 데이터가 받아들여질 위험이 존재함"
+GUIDELINE_CRITERIA_GOOD="DNS 서비스의 동적 업데이트 기능이 비활성화되었거나, 활성화 시 적절한 접근 통제를 수행하고 있는 경우"
+GUIDELINE_CRITERIA_BAD="DNS 서비스의 동적 업데이트 기능이 활성화 중이며 적절한 접근 통제를 수행하고 있지 않은 경우"
+GUIDELINE_REMEDIATION="DNS 서비스를 사용하지 않는 경우 서비스 중지 및 비활성화 설정 DNS 서비스 사용 시 일반적으로 동적 업데이트 기능이 필요 없으나 확인 필요함"
+
+diagnose() {
+    local status="양호"
+    diagnosis_result="GOOD"
+    local inspection_summary="DNS 동적 업데이트 설정이 적절하게 제한되어 있습니다."
+    local command_result=""
+    local command_executed="grep 'allow-update' /etc/named.conf"
+
+    if [ -f "/etc/named.conf" ]; then
+        local update_opt=$(grep -i "allow-update" /etc/named.conf | tr -d '[:space:]' || echo "not-set")
+        if [[ "$update_opt" =~ "any" ]]; then
+            status="취약"
+            diagnosis_result="VULNERABLE"
+            inspection_summary="DNS 동적 업데이트가 모든 호스트(any)에 대해 허용되어 있습니다."
+        fi
+        command_result="allow-update 설정 현황: [ ${update_opt} ]"
+    else
+        command_result="DNS 설정 파일(/etc/named.conf)이 존재하지 않습니다."
+    fi
+
+    command_result=$(echo "$command_result" | tr -d '\n\r')
+
+    save_dual_result \
+        "${ITEM_ID}" "${ITEM_NAME}" "${status}" "${diagnosis_result}" \
+        "${inspection_summary}" "${command_result}" "${command_executed}" \
+        "${GUIDELINE_PURPOSE}" "${GUIDELINE_THREAT}" \
+        "${GUIDELINE_CRITERIA_GOOD}" "${GUIDELINE_CRITERIA_BAD}" "${GUIDELINE_REMEDIATION}"
+    
+    verify_result_saved "${ITEM_ID}"
+    return 0
+}
+
+main() {
+    show_diagnosis_start "${ITEM_ID}" "${ITEM_NAME}"
+    [ "$EUID" -ne 0 ] && { echo "root 권한이 필요합니다."; exit 1; }
+    diagnose
+    show_diagnosis_complete "${ITEM_ID}" "${diagnosis_result}"
+    exit 0
+}
+
+main "$@"
